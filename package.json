@@ -1,22 +1,17 @@
 {
   "name": "molto-bot",
   "version": "1.0.0",
-  "description": "Bot de WhatsApp para MoltoBello Decoración, integración con Google Sheets",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
   },
   "dependencies": {
-    "dayjs": "^1.11.9",
-    "dotenv": "^16.3.1",
-    "googleapis": "^131.0.0",
+    "dotenv": "^16.0.0",
+    "googleapis": "^117.0.0",
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0",
-    "whatsapp-web.js": "^1.21.1"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "author": "MoltoBello",
-  "license": "MIT"
+    "whatsapp-web.js": "^1.19.0",
+    "dayjs": "^1.11.9",
+    "express": "^4.18.2"
+  }
 }
