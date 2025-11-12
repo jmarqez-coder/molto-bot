@@ -7,7 +7,7 @@
     "start": "node bot.js"
   },
   "dependencies": {
-    "dayjs": "^1.12.7",
+    "dayjs": "^1.11.9",
     "dotenv": "^16.3.1",
     "googleapis": "^131.0.0",
     "qrcode": "^2.1.0",
