@@ -3,15 +3,16 @@
 // Usa: whatsapp-web.js + Google Service Account (googleapis)
 require('dotenv').config();
 const fs = require('fs');
-const qrcode = require('qrcode-terminal');
+const qrcodeTerminal = require('qrcode-terminal');
+const qrcode = require('qrcode'); // <-- agregado para guardar imagen
 const { Client } = require('whatsapp-web.js');
 const { google } = require('googleapis');
 const dayjs = require('dayjs');
 
 // ----------------- Config desde env -----------------
-const SPREADSHEET_ID = process.env.SPREADSHEET_ID; // id de tu Google Sheet
-const SERVICE_ACCOUNT_JSON_BASE64 = process.env.SERVICE_ACCOUNT_JSON; // base64 del JSON de la service account
-const SESSION_BASE64 = process.env.SESSION_BASE64 || ''; // base64 del session.json (opcional)
+const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
+const SERVICE_ACCOUNT_JSON_BASE64 = process.env.SERVICE_ACCOUNT_JSON;
+const SESSION_BASE64 = process.env.SESSION_BASE64 || '';
 const WHATSAPP_NUMBER = process.env.WHATSAPP_NUMBER || '';
 const PORT = process.env.PORT || 10000;
 
@@ -21,13 +22,11 @@ function monthSheetName(date = new Date()){
   return `${months[date.getMonth()]} ${date.getFullYear()}`;
 }
 function gastosSheetName(){
-  // e.g. GASTOS NOV 25
   const m = monthSheetName().split(' ')[0].substr(0,3).toUpperCase();
   const yy = String(new Date().getFullYear()).slice(2);
   return `GASTOS ${m} ${yy}`;
 }
 function ingEgrSheetPrefix(){
-  // we'll search sheet starting with 'ING-EGR'
   return 'ING-EGR';
 }
 
@@ -75,23 +74,13 @@ async function updateRowRange(sheetName, rangeA1, values2d) {
 }
 
 // ----------------- Lógica para comandos -----------------
-/*
-Ventas -> sheet: monthSheetName()
-Columns expected (order):
-Folio | Fecha | Cliente | Colonia | Teléfono | Descripción | Fecha estimada | Pago | Venta | Ganancia | Anticipos o pagos | Resta
-We'll append rows matching that structure. If find existing row with same Cliente+Descripción -> update 'Anticipos o pagos'.
-*/
 async function handleVentaCommand(tokens) {
   const sheetName = monthSheetName();
-  // get all values
   const all = await readSheetValues(`${sheetName}!A1:L10000`);
   const headers = all[0] || [];
   const rows = all.slice(1);
 
-  // parse tokens (tokens already as array keeping case)
-  // tokens example: ['Venta','Carlos','persianas','blackout','fecha','18','nov','pago','2800','venta','5200','anticipo','2000']
   const client = tokens[1] || 'SIN NOMBRE';
-  // build description (from token index 2 until a keyword)
   const stopKeys = ['fecha','pago','venta','anticipo'];
   let descParts = [];
   for (let i = 2; i < tokens.length; i++){
@@ -100,12 +89,10 @@ async function handleVentaCommand(tokens) {
   }
   const description = descParts.join(' ');
 
-  // fecha estimada detection
   let fechaEstim = '';
   const idxFecha = tokens.map(t=>t.toLowerCase()).indexOf('fecha');
   if (idxFecha >=0 && tokens[idxFecha+1]) fechaEstim = tokens[idxFecha+1];
 
-  // numeric find
   const findNumberAfter = (keyword) => {
     const idx = tokens.map(t=>t.toLowerCase()).indexOf(keyword);
     if (idx >=0 && tokens[idx+1]) {
@@ -120,8 +107,7 @@ async function handleVentaCommand(tokens) {
 
   const now = dayjs().format('DD/MM/YYYY');
 
-  // find existing row: matching Cliente and Descripción
-  let foundRowIndex = -1; // index in rows (0-based)
+  let foundRowIndex = -1;
   for (let i=0;i<rows.length;i++){
     const r = rows[i];
     const clienteVal = (r[2] || '').toString().trim().toLowerCase();
@@ -133,12 +119,8 @@ async function handleVentaCommand(tokens) {
   }
 
   if (foundRowIndex >= 0) {
-    // update only Anticipos o pagos column (index 10 zero-based in A..L)
-    const sheetRowNumber = foundRowIndex + 2; // because header row present
-    const colAntIdx = 11; // 1-based column L? Wait: A=1 -> Anticipos o pagos is column 11 (K?) Let's map:
-    // We will compute range by columns: A=1 .. L=12. 'Anticipos o pagos' at position 11 (1-based).
-    const colIndex = 11; // 1-based column index where 'Anticipos o pagos' should be (K-like). We'll update single cell.
-    // Convert to letter
+    const sheetRowNumber = foundRowIndex + 2;
+    const colIndex = 11;
     const toColumnLetter = (n) => {
       let s = '';
       while (n>0){
@@ -153,30 +135,20 @@ async function handleVentaCommand(tokens) {
     await updateRowRange(sheetName, rangeA1, [[anticipo !== '' ? anticipo : '']]);
     return `✅ Anticipo actualizado para ${client}.`;
   } else {
-    // append new row with correct columns (A..L)
     const newRow = [
-      '', // Folio
-      now, // Fecha
-      client, // Cliente
-      '', // Colonia
-      '', // Teléfono
-      description, // Descripción
-      fechaEstim, // Fecha estimada
-      pago !== '' ? pago : '', // Pago
-      ventaVal !== '' ? ventaVal : '', // Venta
-      '', // Ganancia (vacia)
-      anticipo !== '' ? anticipo : '', // Anticipos o pagos
-      '' // Resta
+      '', now, client, '', '', description, fechaEstim,
+      pago !== '' ? pago : '',
+      ventaVal !== '' ? ventaVal : '',
+      '', anticipo !== '' ? anticipo : '', ''
     ];
     await appendRow(sheetName, newRow);
     return `✅ Venta registrada: ${client} - ${description}`;
   }
 }
 
-// Gastos personales: sheet GASTOS NOV 25
+// Gastos
 async function handleGastosCommand(tokens) {
   const sheetName = (await findSheetByPrefix('GASTOS')) || gastosSheetName();
-  // tokens: ['Gastos','850','gasolina','...']
   const amount = parseFloat(tokens[1].replace(/[^0-9.-]/g,'')) || '';
   const concept = tokens.slice(2).join(' ') || '';
   const now = dayjs().format('DD/MM/YYYY');
@@ -185,18 +157,14 @@ async function handleGastosCommand(tokens) {
   return `✅ Gasto personal agregado: ${concept} $${amount}`;
 }
 
-// Egresos (facturado / sin facturar) -> sheet ING-EGR ...
+// Egresos
 async function handleEgresoCommand(tokens, tipo) {
-  // find sheet starting with 'ING-EGR'
   const sheetName = (await findSheetByPrefix('ING-EGR')) || (`ING-EGR ${monthSheetName().split(' ')[0].substr(0,3).toUpperCase()} ${String(new Date().getFullYear()).slice(2)}`);
-  // tipo: 'facturado' or 'sin'
   const startRow = (tipo === 'facturado') ? 37 : 16;
   const amount = parseFloat(tokens[1].replace(/[^0-9.-]/g,'')) || '';
   const concept = tokens.slice(2).join(' ') || '';
-  // read a chunk from startRow to some large row
   const readRange = `${sheetName}!A${startRow}:B1000`;
   const grid = await readSheetValues(readRange);
-  // find first empty row where both A and B empty (or A empty)
   let emptyIndex = -1;
   for (let i = 0; i < grid.length; i++){
     const row = grid[i];
@@ -204,12 +172,8 @@ async function handleEgresoCommand(tokens, tipo) {
     const b = (row[1] || '').toString().trim();
     if (a === '' && b === '') { emptyIndex = i; break; }
   }
-  if (emptyIndex === -1) {
-    // means all rows filled in our range; place at end
-    emptyIndex = grid.length;
-  }
+  if (emptyIndex === -1) emptyIndex = grid.length;
   const sheetRow = startRow + emptyIndex;
-  // write concept and amount into A and B of sheetRow
   const rangeA1 = `A${sheetRow}:B${sheetRow}`;
   await updateRowRange(sheetName, rangeA1, [[concept, amount]]);
   return `✅ Egreso (${tipo}) agregado: ${concept} $${amount}`;
@@ -223,10 +187,6 @@ async function findSheetByPrefix(prefix) {
 }
 
 // ----------------- WhatsApp client setup -----------------
-/*
-We will support restoring session from base64 SESSION_BASE64 env.
-If not present, the bot will show QR in logs (useful for local init).
-*/
 let session = undefined;
 if (SESSION_BASE64) {
   try {
@@ -244,13 +204,18 @@ const client = new Client({
 });
 
 client.on('qr', qr => {
-  console.log('Escanea este QR con tu WhatsApp (Data en consola):');
-  qrcode.generate(qr, { small: true });
+  console.log('Escanea este QR con tu WhatsApp (ASCII en consola):');
+  qrcodeTerminal.generate(qr, { small: true });
+
+  // --- NUEVO: guardar QR como imagen ---
+  qrcode.toFile('qr.png', qr, function (err) {
+    if (err) throw err;
+    console.log('✅ QR guardado como qr.png, listo para escanear.');
+  });
 });
 
 client.on('authenticated', (sessionData) => {
   console.log('WhatsApp autenticado, guarda session.json localmente si necesitas.');
-  // you may want to save local session.json during local init
 });
 
 client.on('ready', () => {
@@ -274,13 +239,9 @@ client.on('message', async msg => {
       const reply = await handleEgresoCommand(tokens, 'facturado');
       msg.reply(reply);
     } else if (cmd === 'sin' && tokens[1] && tokens[1].toLowerCase() === 'facturar') {
-      // tokens like ['Sin','facturar','500','concepto...']
       const tail = tokens.slice(2);
       const reply = await handleEgresoCommand(tail, 'sin facturar');
       msg.reply(reply);
-    } else {
-      // ignore unknown messages or optionally reply help
-      // msg.reply('Comando no reconocido. Usa: Venta | Gastos | Facturado | Sin facturar');
     }
   } catch (e) {
     console.error('Error procesando mensaje:', e);
@@ -290,7 +251,6 @@ client.on('message', async msg => {
 
 (async () => {
   try {
-    // verify auth for google
     await auth.authorize();
     console.log('Google Sheets auth OK.');
   } catch (e) {
