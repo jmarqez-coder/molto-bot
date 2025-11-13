@@ -3,33 +3,20 @@
 // Usa: whatsapp-web.js + Google Service Account (googleapis)
 require('dotenv').config();
 const fs = require('fs');
-const path = require('path');
-const qrcode = require('qrcode');
 const qrcodeTerminal = require('qrcode-terminal');
+const qrcode = require('qrcode');
 const { Client } = require('whatsapp-web.js');
 const { google } = require('googleapis');
 const dayjs = require('dayjs');
 
 // ----------------- Config desde env -----------------
-const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
-const SERVICE_ACCOUNT_JSON_BASE64 = process.env.SERVICE_ACCOUNT_JSON;
-const SESSION_BASE64 = process.env.SESSION_BASE64 || '';
-const WHATSAPP_NUMBER = process.env.WHATSAPP_NUMBER || '';
+const SPREADSHEET_ID = process.env.SPREADSHEET_ID; // id de tu Google Sheet
+const SERVICE_ACCOUNT_JSON_BASE64 = process.env.SERVICE_ACCOUNT_JSON; // base64 del JSON de la service account
+const SESSION_BASE64 = process.env.SESSION_BASE64 || ''; // base64 del session.json (opcional)
+const WHATSAPP_NUMBER = process.env.WHATSAPP_NUMBER || '6677770248'; // nuevo número
 const PORT = process.env.PORT || 10000;
 
-// ----------------- Helpers para nombres de sheets -----------------
-function monthSheetName(date = new Date()) {
-  const months = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
-  return `${months[date.getMonth()]} ${date.getFullYear()}`;
-}
-function gastosSheetName() {
-  const m = monthSheetName().split(' ')[0].substr(0,3).toUpperCase();
-  const yy = String(new Date().getFullYear()).slice(2);
-  return `GASTOS ${m} ${yy}`;
-}
-function ingEgrSheetPrefix() { return 'ING-EGR'; }
-
-// ----------------- Inicializar Google Sheets -----------------
+// ----------------- Inicializar Google Sheets client -----------------
 if (!SERVICE_ACCOUNT_JSON_BASE64) {
   console.error('ERROR: falta SERVICE_ACCOUNT_JSON env (base64).');
   process.exit(1);
@@ -45,12 +32,9 @@ const auth = new google.auth.JWT({
 });
 const sheets = google.sheets({ version: 'v4', auth });
 
-// ----------------- Helpers Google Sheets -----------------
+// ----------------- Helper: read/append/update sheet -----------------
 async function readSheetValues(range) {
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range
-  });
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range });
   return res.data.values || [];
 }
 
@@ -72,120 +56,16 @@ async function updateRowRange(sheetName, rangeA1, values2d) {
   });
 }
 
-async function findSheetByPrefix(prefix) {
-  const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
-  const names = meta.data.sheets.map(s => s.properties.title);
-  const found = names.find(n => n.toUpperCase().startsWith(prefix.toUpperCase()));
-  return found || null;
-}
-
-// ----------------- Comandos del bot -----------------
-async function handleVentaCommand(tokens) {
-  const sheetName = monthSheetName();
-  const all = await readSheetValues(`${sheetName}!A1:L10000`);
-  const rows = all.slice(1);
-
-  const client = tokens[1] || 'SIN NOMBRE';
-  const stopKeys = ['fecha','pago','venta','anticipo'];
-  let descParts = [];
-  for (let i = 2; i < tokens.length; i++){
-    if (stopKeys.includes(tokens[i].toLowerCase())) break;
-    descParts.push(tokens[i]);
-  }
-  const description = descParts.join(' ');
-
-  let fechaEstim = '';
-  const idxFecha = tokens.map(t=>t.toLowerCase()).indexOf('fecha');
-  if (idxFecha >=0 && tokens[idxFecha+1]) fechaEstim = tokens[idxFecha+1];
-
-  const findNumberAfter = (keyword) => {
-    const idx = tokens.map(t=>t.toLowerCase()).indexOf(keyword);
-    if (idx >=0 && tokens[idx+1]) {
-      const n = parseFloat(tokens[idx+1].replace(/[^0-9.-]/g,''));
-      return isNaN(n) ? '' : n;
-    }
-    return '';
-  };
-  const pago = findNumberAfter('pago') || '';
-  const ventaVal = findNumberAfter('venta') || '';
-  const anticipo = findNumberAfter('anticipo') || '';
-
-  const now = dayjs().format('DD/MM/YYYY');
-
-  let foundRowIndex = -1;
-  for (let i=0;i<rows.length;i++){
-    const r = rows[i];
-    const clienteVal = (r[2] || '').toString().trim().toLowerCase();
-    const descVal = (r[5] || '').toString().trim().toLowerCase();
-    if (clienteVal === client.toLowerCase() && description !== '' && descVal === description.toLowerCase()) {
-      foundRowIndex = i;
-      break;
-    }
-  }
-
-  if (foundRowIndex >= 0) {
-    const sheetRowNumber = foundRowIndex + 2;
-    const colIndex = 11;
-    const toColumnLetter = (n) => {
-      let s = '';
-      while (n>0){
-        let m = (n-1)%26;
-        s = String.fromCharCode(65+m) + s;
-        n = Math.floor((n-1)/26);
-      }
-      return s;
-    };
-    const letter = toColumnLetter(colIndex);
-    const rangeA1 = `${letter}${sheetRowNumber}:${letter}${sheetRowNumber}`;
-    await updateRowRange(sheetName, rangeA1, [[anticipo !== '' ? anticipo : '']]);
-    return `✅ Anticipo actualizado para ${client}.`;
-  } else {
-    const newRow = [
-      '', now, client, '', '', description, fechaEstim,
-      pago !== '' ? pago : '', ventaVal !== '' ? ventaVal : '',
-      '', anticipo !== '' ? anticipo : '', ''
-    ];
-    await appendRow(sheetName, newRow);
-    return `✅ Venta registrada: ${client} - ${description}`;
-  }
-}
-
-async function handleGastosCommand(tokens) {
-  const sheetName = (await findSheetByPrefix('GASTOS')) || gastosSheetName();
-  const amount = parseFloat(tokens[1].replace(/[^0-9.-]/g,'')) || '';
-  const concept = tokens.slice(2).join(' ') || '';
-  const now = dayjs().format('DD/MM/YYYY');
-  const newRow = [ now, concept, amount ];
-  await appendRow(sheetName, newRow);
-  return `✅ Gasto personal agregado: ${concept} $${amount}`;
-}
-
-async function handleEgresoCommand(tokens, tipo) {
-  const sheetName = (await findSheetByPrefix('ING-EGR')) || (`ING-EGR ${monthSheetName().split(' ')[0].substr(0,3).toUpperCase()} ${String(new Date().getFullYear()).slice(2)}`);
-  const startRow = (tipo === 'facturado') ? 37 : 16;
-  const amount = parseFloat(tokens[0].replace(/[^0-9.-]/g,'')) || '';
-  const concept = tokens.slice(1).join(' ') || '';
-  const readRange = `${sheetName}!A${startRow}:B1000`;
-  const grid = await readSheetValues(readRange);
-  let emptyIndex = -1;
-  for (let i = 0; i < grid.length; i++){
-    const row = grid[i];
-    const a = (row[0] || '').toString().trim();
-    const b = (row[1] || '').toString().trim();
-    if (a === '' && b === '') { emptyIndex = i; break; }
-  }
-  if (emptyIndex === -1) emptyIndex = grid.length;
-  const sheetRow = startRow + emptyIndex;
-  const rangeA1 = `A${sheetRow}:B${sheetRow}`;
-  await updateRowRange(sheetName, rangeA1, [[concept, amount]]);
-  return `✅ Egreso (${tipo}) agregado: ${concept} $${amount}`;
-}
-
-// ----------------- WhatsApp client -----------------
+// ----------------- Inicializar WhatsApp -----------------
 let session = undefined;
 if (SESSION_BASE64) {
-  try { session = JSON.parse(Buffer.from(SESSION_BASE64, 'base64').toString('utf8')); }
-  catch (e) { console.warn('No se pudo parsear SESSION_BASE64:', e.message); }
+  try {
+    const sessionJson = Buffer.from(SESSION_BASE64, 'base64').toString('utf8');
+    session = JSON.parse(sessionJson);
+    console.log('Session loaded from env (base64).');
+  } catch (e) {
+    console.warn('No se pudo parsear SESSION_BASE64:', e.message);
+  }
 }
 
 const client = new Client({
@@ -193,36 +73,48 @@ const client = new Client({
   session
 });
 
+// ----------------- Generar QR -----------------
 client.on('qr', qr => {
-  console.log('Escanea este QR con tu WhatsApp (en consola o como imagen):');
-
-  // QR en consola (ASCII)
+  console.log('Escanea este QR con tu WhatsApp:');
   qrcodeTerminal.generate(qr, { small: true });
-
-  // QR como imagen en carpeta public
-  const qrPath = path.join(__dirname, 'public', 'qr.png');
-  qrcode.toFile(qrPath, qr, function (err) {
+  // además guardamos imagen para escanear mejor
+  qrcode.toFile('qr.png', qr, function (err) {
     if (err) throw err;
-    console.log('✅ QR guardado como public/qr.png');
+    console.log('QR guardado como qr.png');
   });
 });
 
-client.on('authenticated', () => console.log('WhatsApp autenticado.'));
-client.on('ready', () => console.log('✅ Bot conectado a WhatsApp y listo.'));
+client.on('authenticated', (sessionData) => {
+  console.log('WhatsApp autenticado, guarda session.json si necesitas.');
+});
 
+client.on('ready', () => {
+  console.log('✅ Bot conectado a WhatsApp y listo.');
+});
+
+// ----------------- Escuchar mensajes -----------------
 client.on('message', async msg => {
+  console.log('Mensaje recibido del número:', msg.from, '→', msg.body); // depuración
+
   try {
     const raw = msg.body.trim();
     if (!raw) return;
     const tokens = raw.split(/\s+/);
     const cmd = tokens[0].toLowerCase();
 
-    if (cmd === 'venta') msg.reply(await handleVentaCommand(tokens));
-    else if (cmd === 'gastos') msg.reply(await handleGastosCommand(tokens));
-    else if (cmd === 'facturado') msg.reply(await handleEgresoCommand(tokens, 'facturado'));
-    else if (cmd === 'sin' && tokens[1]?.toLowerCase() === 'facturar') {
+    if (cmd === 'venta') {
+      const reply = await handleVentaCommand(tokens);
+      msg.reply(reply);
+    } else if (cmd === 'gastos') {
+      const reply = await handleGastosCommand(tokens);
+      msg.reply(reply);
+    } else if (cmd === 'facturado') {
+      const reply = await handleEgresoCommand(tokens, 'facturado');
+      msg.reply(reply);
+    } else if (cmd === 'sin' && tokens[1] && tokens[1].toLowerCase() === 'facturar') {
       const tail = tokens.slice(2);
-      msg.reply(await handleEgresoCommand(tail, 'sin facturar'));
+      const reply = await handleEgresoCommand(tail, 'sin facturar');
+      msg.reply(reply);
     }
   } catch (e) {
     console.error('Error procesando mensaje:', e);
@@ -230,6 +122,7 @@ client.on('message', async msg => {
   }
 });
 
+// ----------------- Deploy -----------------
 (async () => {
   try {
     await auth.authorize();
@@ -241,13 +134,10 @@ client.on('message', async msg => {
   client.initialize();
 })();
 
-// ----------------- Server para Render healthcheck y QR accesible -----------------
+// ----------------- Servidor healthcheck -----------------
 const express = require('express');
 const app = express();
-
-// Servir archivos de public (QR)
-app.use(express.static('public'));
-
-app.get('/', (req, res) => res.send('MoltoBello bot running\n'));
-
+app.get('/', (req,res) => res.send('MoltoBello bot running\n'));
 app.listen(PORT, () => console.log(`Server on ${PORT}`));
+
+// ----------------- Aquí van tus funciones handleVentaCommand, handleGastosCommand, handleEgresoCommand, monthSheetName, etc. -----------------
