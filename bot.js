@@ -6,10 +6,9 @@ import pkg from 'whatsapp-web.js';
 import { google } from 'googleapis';
 import dayjs from 'dayjs';
 
-// 🔹 Ajuste para compatibilidad con CommonJS
 const { Client, LocalAuth } = pkg;
 
-// Inicializar Express para mostrar el QR
+// Inicializar servidor Express (para ver el QR como imagen)
 const app = express();
 app.get('/', (req, res) => {
   res.send('MoltoBot corriendo. Visita /qr para ver el código QR.');
@@ -25,7 +24,7 @@ app.listen(process.env.PORT || 10000, () =>
   console.log(`🌐 Servidor escuchando en puerto ${process.env.PORT || 10000}`)
 );
 
-// === Google Sheets setup ===
+// === Google Sheets ===
 const auth = new google.auth.GoogleAuth({
   credentials: JSON.parse(Buffer.from(process.env.SERVICE_ACCOUNT_JSON, 'base64').toString('utf8')),
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
@@ -47,7 +46,9 @@ client.on('ready', () => {
 });
 
 client.on('message', async (message) => {
-  if (message.from !== `${process.env.WHATSAPP_NUMBER}@c.us`) return;
+  // 👇 ESTA LÍNEA SE COMENTÓ PARA ACEPTAR TODOS LOS NÚMEROS 👇
+  // if (message.from !== `${process.env.WHATSAPP_NUMBER}@c.us`) return;
+
   const msg = message.body.trim().toLowerCase();
   const fecha = dayjs().format('DD/MM/YYYY');
 
