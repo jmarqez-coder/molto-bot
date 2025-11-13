@@ -98,4 +98,9 @@ client.on('message', async (message) => {
       await message.reply('🧾 Egreso *sin factura* agregado en *ING-EGR NOV 25*');
     }
   } catch (error) {
-    console.error('Error al procesar mensaje:', er
+    console.error('Error al procesar mensaje:', error);
+    await message.reply('⚠️ Hubo un error al guardar la información.');
+  }
+});
+
+client.initialize();
