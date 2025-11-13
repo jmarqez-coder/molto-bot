@@ -9,9 +9,6 @@
     "dotenv": "^16.0.0",
     "express": "^4.18.2",
     "googleapis": "^117.0.0",
-    "qrcode": "^2.1.0",
+    "qrcode": "^1.5.1",
     "qrcode-terminal": "^0.12.0",
-    "whatsapp-web.js": "^1.19.0",
-    "dayjs": "^1.11.9"
-  }
-}
+    "whatsapp-web.js": "
