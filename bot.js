@@ -8,11 +8,15 @@ import dayjs from 'dayjs';
 
 const { Client, LocalAuth } = pkg;
 
-// Inicializar servidor Express (para ver el QR como imagen)
+// ============================
+// 🔹 Servidor Express (para QR)
+// ============================
 const app = express();
+
 app.get('/', (req, res) => {
   res.send('MoltoBot corriendo. Visita /qr para ver el código QR.');
 });
+
 app.get('/qr', (req, res) => {
   if (fs.existsSync('qr.png')) {
     res.sendFile(process.cwd() + '/qr.png');
@@ -20,11 +24,14 @@ app.get('/qr', (req, res) => {
     res.send('QR aún no generado. Espera unos segundos o reinicia el bot.');
   }
 });
-app.listen(process.env.PORT || 10000, () =>
-  console.log(`🌐 Servidor escuchando en puerto ${process.env.PORT || 10000}`)
-);
 
-// === Google Sheets ===
+app.listen(process.env.PORT || 10000, () => {
+  console.log(`🌐 Servidor escuchando en puerto ${process.env.PORT || 10000}`);
+});
+
+// ============================
+// 🔹 Google Sheets
+// ============================
 const auth = new google.auth.GoogleAuth({
   credentials: JSON.parse(Buffer.from(process.env.SERVICE_ACCOUNT_JSON, 'base64').toString('utf8')),
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
@@ -32,9 +39,9 @@ const auth = new google.auth.GoogleAuth({
 const sheets = google.sheets({ version: 'v4', auth });
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 
-// === WhatsApp setup ===
-import pkg from 'whatsapp-web.js';
-const { Client, LocalAuth } = pkg;
+// ============================
+// 🔹 WhatsApp setup con sesión Base64
+// ============================
 
 // Cargar sesión desde variable (si existe)
 let sessionData = null;
@@ -54,6 +61,10 @@ const client = new Client({
   session: sessionData || undefined,
 });
 
+client.on('qr', async (qr) => {
+  console.log('📲 Escanea el código QR para vincular tu WhatsApp.');
+  await qrcode.toFile('qr.png', qr);
+});
 
 client.on('authenticated', (session) => {
   const base64Session = Buffer.from(JSON.stringify(session)).toString('base64');
@@ -61,9 +72,12 @@ client.on('authenticated', (session) => {
   console.log(base64Session);
 });
 
+client.on('ready', () => {
+  console.log('✅ WhatsApp conectado y listo para registrar tus ventas y gastos.');
+});
+
 client.on('message', async (message) => {
-  // 👇 ESTA LÍNEA SE COMENTÓ PARA ACEPTAR TODOS LOS NÚMEROS 👇
-  // if (!message.from.includes(process.env.WHATSAPP_NUMBER)) return;
+  console.log('📩 Mensaje recibido:', message.from, '->', message.body);
 
   const msg = message.body.trim().toLowerCase();
   const fecha = dayjs().format('DD/MM/YYYY');
