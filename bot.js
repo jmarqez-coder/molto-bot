@@ -33,16 +33,32 @@ const sheets = google.sheets({ version: 'v4', auth });
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 
 // === WhatsApp setup ===
-const client = new Client({ authStrategy: new LocalAuth() });
+import pkg from 'whatsapp-web.js';
+const { Client, LocalAuth } = pkg;
 
-client.on('qr', async (qr) => {
-  console.log('Generando QR en imagen PNG...');
-  await qrcode.toFile('qr.png', qr);
-  console.log(`✅ QR generado: abre tu enlace Render en /qr para escanearlo`);
+// Cargar sesión desde variable (si existe)
+let sessionData = null;
+if (process.env.SESSION_BASE64 && process.env.SESSION_BASE64.trim() !== '') {
+  try {
+    sessionData = JSON.parse(
+      Buffer.from(process.env.SESSION_BASE64, 'base64').toString('utf8')
+    );
+    console.log('✅ Sesión cargada desde SESSION_BASE64.');
+  } catch (e) {
+    console.log('⚠️ No se pudo cargar la sesión desde Base64:', e.message);
+  }
+}
+
+const client = new Client({
+  authStrategy: new LocalAuth({ clientId: 'molto-session' }),
+  session: sessionData || undefined,
 });
 
-client.on('ready', () => {
-  console.log('✅ WhatsApp conectado y listo para registrar tus ventas y gastos.');
+
+client.on('authenticated', (session) => {
+  const base64Session = Buffer.from(JSON.stringify(session)).toString('base64');
+  console.log('💾 Guarda este texto en SESSION_BASE64 para mantener la sesión:');
+  console.log(base64Session);
 });
 
 client.on('message', async (message) => {
