@@ -47,7 +47,7 @@ client.on('ready', () => {
 
 client.on('message', async (message) => {
   // 👇 ESTA LÍNEA SE COMENTÓ PARA ACEPTAR TODOS LOS NÚMEROS 👇
-  // if (message.from !== `${process.env.WHATSAPP_NUMBER}@c.us`) return;
+  // if (!message.from.includes(process.env.WHATSAPP_NUMBER)) return;
 
   const msg = message.body.trim().toLowerCase();
   const fecha = dayjs().format('DD/MM/YYYY');
