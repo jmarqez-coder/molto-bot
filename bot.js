@@ -2,11 +2,14 @@ import 'dotenv/config';
 import fs from 'fs';
 import express from 'express';
 import qrcode from 'qrcode';
-import { Client, LocalAuth } from 'whatsapp-web.js';
+import pkg from 'whatsapp-web.js';
 import { google } from 'googleapis';
 import dayjs from 'dayjs';
 
-// Inicializar Express para mostrar el QR como enlace
+// 🔹 Ajuste para compatibilidad con CommonJS
+const { Client, LocalAuth } = pkg;
+
+// Inicializar Express para mostrar el QR
 const app = express();
 app.get('/', (req, res) => {
   res.send('MoltoBot corriendo. Visita /qr para ver el código QR.');
@@ -19,7 +22,7 @@ app.get('/qr', (req, res) => {
   }
 });
 app.listen(process.env.PORT || 10000, () =>
-  console.log(`🌐 Servidor Express escuchando en puerto ${process.env.PORT || 10000}`)
+  console.log(`🌐 Servidor escuchando en puerto ${process.env.PORT || 10000}`)
 );
 
 // === Google Sheets setup ===
@@ -95,9 +98,4 @@ client.on('message', async (message) => {
       await message.reply('🧾 Egreso *sin factura* agregado en *ING-EGR NOV 25*');
     }
   } catch (error) {
-    console.error('Error al procesar mensaje:', error);
-    await message.reply('⚠️ Hubo un error al guardar la información.');
-  }
-});
-
-client.initialize();
+    console.error('Error al procesar mensaje:', er
